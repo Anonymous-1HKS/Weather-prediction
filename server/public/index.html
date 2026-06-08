@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ESP32 Audio Dashboard</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap');
+
+  :root {
+    --bg: #0f1117;
+    --surface: #181c27;
+    --border: #2a2f3d;
+    --teal: #00d4a0;
+    --teal-dim: rgba(0,212,160,0.12);
+    --amber: #f5a623;
+    --red: #e05555;
+    --text: #e8eaf0;
+    --muted: #7a8099;
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'IBM Plex Sans', sans-serif;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); font-size: 14px; min-height: 100vh; }
+
+  header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 14px 24px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .logo { display: flex; align-items: center; gap: 10px; }
+  .logo-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--teal); box-shadow: 0 0 8px var(--teal); animation: pulse 2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.5} }
+  .logo-text { font-family: var(--mono); font-size: 15px; font-weight: 500; letter-spacing: 0.05em; }
+  .logo-text span { color: var(--teal); }
+
+  .status-bar { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+  .status-live { color: var(--teal); }
+
+  main { padding: 24px; max-width: 1100px; margin: 0 auto; }
+
+  .stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 24px; }
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 18px;
+  }
+  .stat-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px; }
+  .stat-value { font-family: var(--mono); font-size: 26px; font-weight: 500; }
+  .stat-value.teal { color: var(--teal); }
+  .stat-value.amber { color: var(--amber); }
+
+  .toolbar {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 14px; gap: 12px;
+  }
+  .search-box {
+    display: flex; align-items: center; gap: 8px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 8px 12px; flex: 1; max-width: 320px;
+  }
+  .search-box input {
+    background: none; border: none; outline: none; color: var(--text);
+    font-size: 13px; font-family: var(--sans); width: 100%;
+  }
+  .search-icon { color: var(--muted); font-size: 15px; }
+
+  .btn {
+    background: none; border: 1px solid var(--border);
+    border-radius: 8px; padding: 8px 14px; color: var(--text);
+    font-size: 13px; cursor: pointer; font-family: var(--sans);
+    transition: all 0.15s; display: flex; align-items: center; gap: 6px;
+  }
+  .btn:hover { border-color: var(--teal); color: var(--teal); }
+  .btn-export { border-color: var(--amber); color: var(--amber); }
+  .btn-export:hover { background: rgba(245,166,35,0.1); }
+
+  .table-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+  table { width: 100%; border-collapse: collapse; }
+  thead th {
+    padding: 11px 16px; text-align: left;
+    font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em;
+    font-weight: 500; border-bottom: 1px solid var(--border);
+    background: rgba(255,255,255,0.02);
+    cursor: pointer; user-select: none;
+  }
+  thead th:hover { color: var(--teal); }
+  .sort-icon { margin-left: 4px; opacity: 0.5; }
+  tbody tr { border-bottom: 1px solid var(--border); transition: background 0.1s; cursor: pointer; }
+  tbody tr:last-child { border-bottom: none; }
+  tbody tr:hover { background: var(--teal-dim); }
+  tbody tr.selected { background: rgba(0,212,160,0.08); border-left: 3px solid var(--teal); }
+  td { padding: 12px 16px; font-size: 13px; }
+
+  .badge {
+    display: inline-flex; align-items: center; gap: 4px;
+    border-radius: 5px; padding: 3px 8px; font-size: 11px;
+    font-family: var(--mono); font-weight: 500;
+  }
+  .badge-ok { background: rgba(0,212,160,0.15); color: var(--teal); }
+  .badge-device { background: rgba(100,120,220,0.15); color: #8899ff; }
+
+  .mono { font-family: var(--mono); color: var(--muted); font-size: 12px; }
+
+  .action-btn {
+    background: none; border: none; cursor: pointer; padding: 5px 8px;
+    border-radius: 6px; font-size: 13px; transition: background 0.15s;
+    color: var(--muted);
+  }
+  .action-btn:hover { background: var(--border); color: var(--text); }
+  .action-btn.del:hover { color: var(--red); }
+
+  .waveform-mini { display: flex; align-items: center; gap: 1.5px; height: 20px; }
+  .waveform-mini span {
+    width: 2px; border-radius: 1px;
+    background: var(--teal); opacity: 0.6;
+    animation: wave var(--d,0.8s) ease-in-out infinite alternate;
+    animation-delay: var(--del,0s);
+  }
+  @keyframes wave { from { transform: scaleY(0.2); } to { transform: scaleY(1); } }
+
+  .pagination {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 16px; border-top: 1px solid var(--border);
+    font-size: 12px; color: var(--muted);
+  }
+  .page-btns { display: flex; gap: 4px; }
+  .page-btn {
+    width: 28px; height: 28px; border-radius: 6px;
+    background: none; border: 1px solid var(--border);
+    color: var(--muted); cursor: pointer; font-size: 12px;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.1s;
+  }
+  .page-btn:hover, .page-btn.active { border-color: var(--teal); color: var(--teal); }
+
+  .detail-panel {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 20px; margin-top: 16px;
+    display: none;
+  }
+  .detail-panel.open { display: block; }
+  .detail-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+  .detail-title { font-family: var(--mono); color: var(--teal); font-size: 14px; }
+  .detail-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+  .detail-field label { font-size: 11px; color: var(--muted); display: block; margin-bottom: 4px; }
+  .detail-field span { font-family: var(--mono); font-size: 13px; }
+
+  .waveform-big {
+    margin-top: 16px; height: 60px; background: var(--bg);
+    border-radius: 8px; overflow: hidden; position: relative;
+    display: flex; align-items: center; padding: 0 12px; gap: 2px;
+  }
+
+  .footer { text-align: center; padding: 20px; color: var(--muted); font-size: 12px; font-family: var(--mono); }
+
+  @media (max-width: 700px) {
+    .stats-row { grid-template-columns: 1fr 1fr; }
+    .detail-grid { grid-template-columns: 1fr 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-dot"></div>
+    <div class="logo-text"><span>ESP32</span> Audio Logger</div>
+  </div>
+  <div class="status-bar">
+    <span>Server: <span class="status-live">localhost:3000</span></span>
+    <span id="last-update">--</span>
+  </div>
+</header>
+
+<main>
+  <div class="stats-row">
+    <div class="stat-card">
+      <div class="stat-label">Tổng bản ghi</div>
+      <div class="stat-value teal" id="stat-total">0</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Tổng thời gian (giây)</div>
+      <div class="stat-value" id="stat-duration">0s</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Dung lượng (KB)</div>
+      <div class="stat-value amber" id="stat-size">0</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Thiết bị</div>
+      <div class="stat-value" id="stat-devices">0</div>
+    </div>
+  </div>
+
+  <div class="toolbar">
+    <div class="search-box">
+      <span class="search-icon">🔍</span>
+      <input type="text" placeholder="Tìm theo thiết bị, tên file..." id="search-input" oninput="filterRows()">
+    </div>
+    <div style="display:flex;gap:8px;">
+      <button class="btn" onclick="loadData()">↻ Làm mới</button>
+      <button class="btn btn-export" onclick="exportCSV()">⬇ Xuất CSV</button>
+    </div>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th onclick="sortBy('id')">ID <span class="sort-icon">↕</span></th>
+          <th onclick="sortBy('filename')">Tên file <span class="sort-icon">↕</span></th>
+          <th onclick="sortBy('device_id')">Thiết bị <span class="sort-icon">↕</span></th>
+          <th onclick="sortBy('duration')">Thời lượng <span class="sort-icon">↕</span></th>
+          <th onclick="sortBy('size_kb')">Kích thước <span class="sort-icon">↕</span></th>
+          <th onclick="sortBy('sample_rate')">Sample Rate <span class="sort-icon">↕</span></th>
+          <th onclick="sortBy('created_at')">Thời gian ghi <span class="sort-icon">↕</span></th>
+          <th>Trạng thái</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="table-body">
+      </tbody>
+    </table>
+    <div class="pagination">
+      <span id="page-info">Đang tải...</span>
+      <div class="page-btns" id="page-btns"></div>
+    </div>
+  </div>
+
+  <div class="detail-panel" id="detail-panel">
+    <div class="detail-header">
+      <span class="detail-title" id="detail-title">Chi tiết bản ghi</span>
+      <button class="btn" onclick="closeDetail()">✕ Đóng</button>
+    </div>
+    <div class="detail-grid" id="detail-grid"></div>
+    <div class="waveform-big" id="waveform-big"></div>
+  </div>
+</main>
+
+<div class="footer">ESP32 Audio Dashboard · Kết nối tới <code>http://localhost:3000/api/recordings</code></div>
+
+<script>
+// Dữ liệu mẫu khi chưa có server thật
+const SAMPLE_DATA = Array.from({length: 18}, (_, i) => {
+  const devs = ['ESP32-A1S-01', 'ESP32-A1S-02', 'ESP32-A1S-01'];
+  const rates = [16000, 44100, 22050];
+  const d = new Date(Date.now() - i * 11 * 60000);
+  return {
+    id: 18 - i,
+    filename: `rec_${Date.now() - i*11000}.pcm`,
+    device_id: devs[i % 3],
+    duration: Math.floor(Math.random() * 10) + 3,
+    size_kb: Math.floor(Math.random() * 400) + 80,
+    sample_rate: rates[i % 3],
+    created_at: d.toLocaleString('vi-VN')
+  };
+});
+
+let allData = [];
+let filteredData = [];
+let sortKey = 'id';
+let sortDir = -1;
+let currentPage = 1;
+const PAGE_SIZE = 10;
+let selectedId = null;
+
+async function loadData() {
+  try {
+    const res = await fetch('/api/recordings');
+    if (!res.ok) throw new Error();
+    allData = await res.json();
+  } catch {
+    // Fallback demo data
+    allData = SAMPLE_DATA;
+  }
+  document.getElementById('last-update').textContent = 'Cập nhật: ' + new Date().toLocaleTimeString('vi-VN');
+  applyFilter();
+  updateStats();
+}
+
+function updateStats() {
+  document.getElementById('stat-total').textContent = allData.length;
+  document.getElementById('stat-duration').textContent = allData.reduce((a,r) => a + (r.duration||0), 0) + 's';
+  document.getElementById('stat-size').textContent = allData.reduce((a,r) => a + (r.size_kb||0), 0).toLocaleString();
+  const devs = new Set(allData.map(r => r.device_id)).size;
+  document.getElementById('stat-devices').textContent = devs;
+}
+
+function filterRows() {
+  applyFilter();
+}
+
+function applyFilter() {
+  const q = document.getElementById('search-input').value.toLowerCase();
+  filteredData = allData.filter(r =>
+    !q ||
+    (r.filename||'').toLowerCase().includes(q) ||
+    (r.device_id||'').toLowerCase().includes(q)
+  );
+  filteredData.sort((a, b) => {
+    const av = a[sortKey], bv = b[sortKey];
+    if (av < bv) return sortDir;
+    if (av > bv) return -sortDir;
+    return 0;
+  });
+  currentPage = 1;
+  renderTable();
+}
+
+function sortBy(key) {
+  if (sortKey === key) sortDir *= -1;
+  else { sortKey = key; sortDir = -1; }
+  applyFilter();
+}
+
+function renderTable() {
+  const start = (currentPage - 1) * PAGE_SIZE;
+  const page = filteredData.slice(start, start + PAGE_SIZE);
+  const tbody = document.getElementById('table-body');
+  tbody.innerHTML = '';
+
+  if (!page.length) {
+    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:32px">Không có dữ liệu</td></tr>';
+    document.getElementById('page-info').textContent = '0 bản ghi';
+    document.getElementById('page-btns').innerHTML = '';
+    return;
+  }
+
+  page.forEach(row => {
+    const tr = document.createElement('tr');
+    if (row.id === selectedId) tr.classList.add('selected');
+
+    // Mini waveform (decorative)
+    const bars = Array.from({length: 8}, (_, i) =>
+      `<span style="height:${Math.floor(Math.random()*80+20)}%;--d:${(0.4+i*0.1).toFixed(1)}s;--del:${(i*0.05).toFixed(2)}s"></span>`
+    ).join('');
+
+    tr.innerHTML = `
+      <td class="mono">#${row.id}</td>
+      <td>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <div class="waveform-mini">${bars}</div>
+          <span style="font-family:var(--mono);font-size:12px;color:var(--muted)">${(row.filename||'').substring(0,22)}…</span>
+        </div>
+      </td>
+      <td><span class="badge badge-device">${row.device_id||'—'}</span></td>
+      <td class="mono">${row.duration||0}s</td>
+      <td class="mono">${(row.size_kb||0).toLocaleString()} KB</td>
+      <td class="mono">${(row.sample_rate||0).toLocaleString()} Hz</td>
+      <td style="color:var(--muted);font-size:12px">${row.created_at||'—'}</td>
+      <td><span class="badge badge-ok">✓ OK</span></td>
+      <td>
+        <button class="action-btn del" onclick="event.stopPropagation();deleteRow(${row.id})" title="Xóa">🗑</button>
+      </td>
+    `;
+    tr.onclick = () => showDetail(row);
+    tbody.appendChild(tr);
+  });
+
+  // Pagination
+  const totalPages = Math.ceil(filteredData.length / PAGE_SIZE);
+  document.getElementById('page-info').textContent =
+    `${start+1}–${Math.min(start+PAGE_SIZE, filteredData.length)} / ${filteredData.length} bản ghi`;
+
+  const pgDiv = document.getElementById('page-btns');
+  pgDiv.innerHTML = '';
+  for (let p = 1; p <= totalPages; p++) {
+    const btn = document.createElement('button');
+    btn.className = 'page-btn' + (p === currentPage ? ' active' : '');
+    btn.textContent = p;
+    btn.onclick = () => { currentPage = p; renderTable(); };
+    pgDiv.appendChild(btn);
+  }
+}
+
+function showDetail(row) {
+  selectedId = row.id;
+  renderTable();
+  const panel = document.getElementById('detail-panel');
+  panel.classList.add('open');
+  document.getElementById('detail-title').textContent = `📁 ${row.filename}`;
+
+  const fields = [
+    ['ID', '#' + row.id],
+    ['Thiết bị', row.device_id || '—'],
+    ['Thời lượng', row.duration + ' giây'],
+    ['Kích thước', (row.size_kb||0).toLocaleString() + ' KB'],
+    ['Sample rate', (row.sample_rate||0).toLocaleString() + ' Hz'],
+    ['Thời gian ghi', row.created_at || '—'],
+  ];
+
+  document.getElementById('detail-grid').innerHTML = fields.map(([l, v]) =>
+    `<div class="detail-field"><label>${l}</label><span>${v}</span></div>`
+  ).join('');
+
+  // Decorative waveform
+  const wf = document.getElementById('waveform-big');
+  const barCount = 80;
+  wf.innerHTML = Array.from({length: barCount}, (_, i) => {
+    const h = Math.abs(Math.sin(i * 0.4) * 0.6 + Math.random() * 0.4) * 100;
+    return `<div style="flex:1;height:${h}%;background:var(--teal);opacity:${0.3+h/200};border-radius:1px"></div>`;
+  }).join('');
+
+  panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function closeDetail() {
+  selectedId = null;
+  document.getElementById('detail-panel').classList.remove('open');
+  renderTable();
+}
+
+async function deleteRow(id) {
+  if (!confirm('Xóa bản ghi #' + id + '?')) return;
+  try {
+    await fetch('/api/recordings/' + id, { method: 'DELETE' });
+  } catch {}
+  allData = allData.filter(r => r.id !== id);
+  if (selectedId === id) closeDetail();
+  applyFilter();
+  updateStats();
+}
+
+function exportCSV() {
+  const headers = ['ID','Filename','Device','Duration(s)','Size(KB)','SampleRate','CreatedAt'];
+  const rows = filteredData.map(r =>
+    [r.id, r.filename, r.device_id, r.duration, r.size_kb, r.sample_rate, r.created_at].join(',')
+  );
+  const csv = [headers.join(','), ...rows].join('\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], {type:'text/csv'}));
+  a.download = 'recordings_' + new Date().toISOString().slice(0,10) + '.csv';
+  a.click();
+}
+
+// Auto refresh mỗi 30 giây
+loadData();
+setInterval(loadData, 30000);
+</script>
+</body>
+</html>
